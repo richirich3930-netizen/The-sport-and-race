@@ -2,26 +2,405 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale.0">
-    <title>Мой первый сайт на GitHub</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Hypercar Highway</title>
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
         body {
-            font-family: Arial, sans-serif;
-            background-color: #0f172a;
-            color: #f8fafc;
+            background-color: #050510;
+            color: #fff;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            max-width: 420px;
+            height: 100vh;
+            max-height: 750px;
+            background: linear-gradient(180deg, #090919 0%, #161633 100%);
+            border: 2px solid #00f0ff;
+            box-shadow: 0 0 20px #00f0ff44;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border-bottom: 2px solid #ff007f;
+            z-index: 5;
+        }
+        .hud-item {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00f0ff;
+            text-shadow: 0 0 5px #00f0ff;
+        }
+        canvas {
+            flex: 1;
+            width: 100%;
+            background: #111;
+            display: block;
+        }
+        #controls {
+            display: flex;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.8);
+            border-top: 2px solid #00f0ff;
+            z-index: 5;
+        }
+        .btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            color: #00f0ff;
+            background: transparent;
+            border: none;
+            outline: none;
+        }
+        .btn:active {
+            background: rgba(0, 240, 255, 0.2);
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 5, 16, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
             text-align: center;
-            padding-top: 100px;
+            z-index: 10;
+        }
+        .hidden {
+            display: none !important;
         }
         h1 {
-            color: #38bdf8;
+            font-size: 30px;
+            color: #ff007f;
+            text-shadow: 0 0 10px #ff007f, 0 0 20px #ff007f;
+            margin-bottom: 10px;
         }
         p {
-            font-size: 18px;
+            font-size: 16px;
+            color: #a0a0e0;
+            margin-bottom: 25px;
+        }
+        .start-btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #050510;
+            background: #00f0ff;
+            border: none;
+            border-radius: 30px;
+            box-shadow: 0 0 15px #00f0ff;
+            cursor: pointer;
+        }
+        .start-btn:active {
+            transform: scale(0.95);
         }
     </style>
 </head>
 <body>
-    <h1>Привет, мир! 🚀</h1>
-    <p>Мой сайт успешно создан и работает на GitHub Pages!</p>
+
+    <div id="game-container">
+        <div id="hud">
+            <div class="hud-item" id="distance-display">Осталось: 1000м</div>
+            <div class="hud-item" id="speed-display">Bugatti</div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="controls">
+            <button class="btn" id="leftBtn">◀</button>
+            <button class="btn" id="rightBtn">▶</button>
+        </div>
+
+        <div id="startScreen" class="screen">
+            <h1>HYPERCAR HIGHWAY</h1>
+            <p>Управляй Bugatti Bolide!<br>Объезжай препятствия и доберись до финиша.</p>
+            <button class="start-btn" id="startBtn">ПОЕХАЛИ!</button>
+        </div>
+
+        <div id="winScreen" class="screen hidden">
+            <h1 style="color: #00ffcc; text-shadow: 0 0 10px #00ffcc;">ПОБЕДА!</h1>
+            <p>Ты успешно финишировал на своем Bugatti Bolide!</p>
+            <button class="start-btn" id="restartWinBtn">ИГРАТЬ СНОВА</button>
+        </div>
+
+        <div id="loseScreen" class="screen hidden">
+            <h1>АВАРИЯ!</h1>
+            <p>Bugatti Bolide врезался в препятствие.</p>
+            <button class="start-btn" id="restartLoseBtn">ПОПРОБОВАТЬ СНОВА</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let audioCtx = null;
+
+        function playSound(type) {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'move') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                } else if (type === 'crash') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                    osc.frequency.linearRampToValueAtTime(30, audioCtx.currentTime + 0.3);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.3);
+                } else if (type === 'win') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.4);
+                }
+            } catch (e) {
+                // Ignore audio errors on strict mobile browsers
+            }
+        }
+
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+
+        let isPlaying = false;
+        let distance = 1000;
+        let playerLane = 1;
+        let obstacles = [];
+        let roadOffset = 0;
+        let spawnTimer = 0;
+        const totalLanes = 3;
+
+        function getLaneX(lane) {
+            const laneWidth = canvas.width / totalLanes;
+            return laneWidth * lane + laneWidth / 2;
+        }
+
+        const player = {
+            y: 0,
+            width: 45,
+            height: 80,
+            targetX: 0,
+            currentX: 0
+        };
+
+        function resetGame() {
+            resizeCanvas();
+            distance = 1000;
+            playerLane = 1;
+            obstacles = [];
+            roadOffset = 0;
+            player.y = canvas.height - 110;
+            player.targetX = getLaneX(1);
+            player.currentX = player.targetX;
+            document.getElementById('distance-display').innerText = `Осталось: ${Math.ceil(distance)}м`;
+        }
+
+        document.getElementById('leftBtn').addEventListener('click', (e) => { e.preventDefault(); moveLeft(); });
+        document.getElementById('rightBtn').addEventListener('click', (e) => { e.preventDefault(); moveRight(); });
+
+        function moveLeft() {
+            if (!isPlaying) return;
+            if (playerLane > 0) {
+                playerLane--;
+                playSound('move');
+            }
+        }
+
+        function moveRight() {
+            if (!isPlaying) return;
+            if (playerLane < totalLanes - 1) {
+                playerLane++;
+                playSound('move');
+            }
+        }
+
+        function spawnObstacle() {
+            const lane = Math.floor(Math.random() * totalLanes);
+            const types = ['barrier', 'oil'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            obstacles.push({
+                lane: lane,
+                x: getLaneX(lane),
+                y: -60,
+                width: 40,
+                height: type === 'barrier' ? 40 : 35,
+                type: type
+            });
+        }
+
+        function update() {
+            if (!isPlaying) return;
+
+            distance -= 0.6;
+            if (distance <= 0) {
+                distance = 0;
+                winGame();
+            }
+            document.getElementById('distance-display').innerText = `Осталось: ${Math.ceil(distance)}м`;
+
+            roadOffset = (roadOffset + 8) % 40;
+
+            player.targetX = getLaneX(playerLane);
+            player.currentX += (player.targetX - player.currentX) * 0.25;
+
+            spawnTimer++;
+            if (spawnTimer > 45) {
+                spawnObstacle();
+                spawnTimer = 0;
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.y += 7;
+
+                if (Math.abs(obs.y - player.y) < 50 && obs.lane === playerLane) {
+                    gameOver();
+                }
+
+                if (obs.y > canvas.height + 50) {
+                    obstacles.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#0a0a16';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([20, 20]);
+            ctx.lineDashOffset = -roadOffset;
+
+            const laneWidth = canvas.width / totalLanes;
+            for (let i = 1; i < totalLanes; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * laneWidth, 0);
+                ctx.lineTo(i * laneWidth, canvas.height);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            obstacles.forEach(obs => {
+                if (obs.type === 'barrier') {
+                    ctx.fillStyle = '#ff0055';
+                    ctx.shadowColor = '#ff0055';
+                    ctx.shadowBlur = 10;
+                    ctx.fillRect(obs.x - obs.width/2, obs.y - obs.height/2, obs.width, obs.height);
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.fillStyle = '#ffaa00';
+                    ctx.shadowColor = '#ffaa00';
+                    ctx.shadowBlur = 10;
+                    ctx.beginPath();
+                    ctx.arc(obs.x, obs.y, obs.width/2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            ctx.save();
+            ctx.translate(player.currentX, player.y);
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.shadowColor = '#00f0ff';
+            ctx.shadowBlur = 15;
+            ctx.fillRect(-player.width/2, -player.height/2, player.width, player.height);
+
+            ctx.fillStyle = '#050510';
+            ctx.fillRect(-player.width/4, -player.height/4, player.width/2, player.height/2);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-player.width/2 + 2, -player.height/2, 8, 4);
+            ctx.fillRect(player.width/2 - 10, -player.height/2, 8, 4);
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            resetGame();
+            isPlaying = true;
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('winScreen').classList.add('hidden');
+            document.getElementById('loseScreen').classList.add('hidden');
+        }
+
+        function winGame() {
+            isPlaying = false;
+            playSound('win');
+            document.getElementById('winScreen').classList.remove('hidden');
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            playSound('crash');
+            document.getElementById('loseScreen').classList.remove('hidden');
+        }
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartWinBtn').addEventListener('click', startGame);
+        document.getElementById('restartLoseBtn').addEventListener('click', startGame);
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        requestAnimationFrame(gameLoop);
+    </script>
 </body>
 </html>
